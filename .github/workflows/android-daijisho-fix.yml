@@ -9,20 +9,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: recursive
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Install NDK
-        run: sdkmanager --install "ndk;30.0.15729638"
+      # The GitHub Ubuntu runners ship the Android SDK preinstalled in $ANDROID_HOME.
+      - name: Install NDK and accept SDK licenses
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" --install "ndk;30.0.15729638" "platforms;android-37" "build-tools;37.0.0" || "$SDKM" --install "ndk;30.0.15729638"
 
       - name: Build debug APK (installs as org.dolphinemu.dolphinemu.debug)
         working-directory: Source/Android
