@@ -30,7 +30,12 @@ jobs:
         working-directory: Source/Android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon -Pandroid.injected.build.abi=arm64-v8a -Pandroid.injected.testOnly=false
+          ARGS="--no-daemon -Pandroid.injected.build.abi=arm64-v8a -Pandroid.injected.testOnly=false"
+          # Data/Sys is copied into the app assets by CMake, which on a clean checkout runs after
+          # Gradle has already merged the assets. Build twice so the APK includes Sys
+          # (fonts, per-game settings, shaders...).
+          ./gradlew assembleDebug $ARGS
+          ./gradlew assembleDebug $ARGS
 
       # Collect the app APK and make sure Android's package installer will accept it
       # (an APK marked testOnly is rejected as "invalid package").
@@ -41,6 +46,9 @@ jobs:
           echo "APK: $APK"
           cp "$APK" out/dolphin-daijisho-fix-arm64.apk
           AAPT2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)
+          if ! unzip -l out/dolphin-daijisho-fix-arm64.apk | grep -q "assets/Sys/GC/font_western.bin"; then
+            echo "APK is missing the Sys folder (GameCube fonts)"; exit 1
+          fi
           "$AAPT2" dump badging out/dolphin-daijisho-fix-arm64.apk | grep -E "^package:|native-code|testOnly" || true
           if "$AAPT2" dump xmltree --file AndroidManifest.xml out/dolphin-daijisho-fix-arm64.apk | grep -q 'testOnly.*=true\|testOnly.*0xffffffff'; then
             echo "APK is marked testOnly, the installer would reject it"; exit 1
