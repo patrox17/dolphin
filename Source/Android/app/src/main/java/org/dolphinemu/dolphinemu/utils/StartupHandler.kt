@@ -28,11 +28,22 @@ object StartupHandler {
             TvUtil.scheduleSyncingChannel(parent)
         }
 
+        launchGamesFromIntent(parent)
+    }
+
+    /**
+     * Starts the game(s) specified by an external app (frontend) in the activity's intent, if any.
+     * Returns true if the intent specified a game.
+     */
+    @JvmStatic
+    fun launchGamesFromIntent(parent: FragmentActivity): Boolean {
         val gamesToLaunch = getGamesFromIntent(parent.intent)
         if (gamesToLaunch != null && gamesToLaunch.isNotEmpty()) {
             // Start the emulation activity, send the ISO passed in and finish the main activity
             EmulationActivity.launch(parent, gamesToLaunch, false, true)
+            return true
         }
+        return false
     }
 
     private fun getGamesFromIntent(intent: Intent): Array<String>? {

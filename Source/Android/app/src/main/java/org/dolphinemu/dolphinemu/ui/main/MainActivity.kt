@@ -2,6 +2,7 @@
 
 package org.dolphinemu.dolphinemu.ui.main
 
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.Menu
@@ -88,6 +89,15 @@ class MainActivity : AppCompatActivity(), MainView, OnRefreshListener, ThemeProv
             AfterDirectoryInitializationRunner()
                 .runWithLifecycle(this) { setPlatformTabsAndStartGameFileCacheService() }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // An external app (frontend) can deliver a new game to an already existing MainActivity
+        // (e.g. when launched with FLAG_ACTIVITY_CLEAR_TOP / SINGLE_TOP). Previously such
+        // intents were ignored because the game was only read in onCreate.
+        setIntent(intent)
+        StartupHandler.launchGamesFromIntent(this)
     }
 
     override fun onResume() {

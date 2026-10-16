@@ -62,11 +62,13 @@ import org.dolphinemu.dolphinemu.overlay.InputOverlayPointer
 import org.dolphinemu.dolphinemu.ui.main.MainPresenter
 import org.dolphinemu.dolphinemu.ui.main.ThemeProvider
 import org.dolphinemu.dolphinemu.utils.AfterDirectoryInitializationRunner
+import org.dolphinemu.dolphinemu.utils.Log
 import org.dolphinemu.dolphinemu.utils.DirectoryInitialization
 import org.dolphinemu.dolphinemu.utils.FileBrowserHelper
 import org.dolphinemu.dolphinemu.utils.RateLimiter
 import org.dolphinemu.dolphinemu.utils.ThemeHelper
 import kotlin.math.roundToInt
+import java.lang.ref.WeakReference
 
 class EmulationActivity : AppCompatActivity(), ThemeProvider {
     private var emulationFragment: EmulationFragment? = null
@@ -1030,6 +1032,17 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
 
         private var ignoreLaunchRequests = false
 
+        // A game requested by an external frontend (Daijisho, ES-DE, ...) while another game was
+        // still running. It is launched as soon as the running game has fully shut down.
+        private class PendingIntentLaunch(
+            val activity: WeakReference<FragmentActivity>,
+            val filePaths: Array<String>,
+            val riivolution: Boolean
+        )
+
+        private val launchLock = Any()
+        private var pendingIntentLaunch: PendingIntentLaunch? = null
+
         var hasUserPausedEmulation = false
 
         private val skylanderSlots: MutableList<SkylanderSlot> = ArrayList()
@@ -1104,8 +1117,22 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
 
         @JvmStatic
         fun launch(activity: FragmentActivity, filePaths: Array<String>, riivolution: Boolean, fromIntent: Boolean = false) {
-            if (ignoreLaunchRequests)
-                return
+            synchronized(launchLock) {
+                if (ignoreLaunchRequests) {
+                    if (fromIntent) {
+                        // A frontend asked for a game while another one is still running (for
+                        // example because the user went back to the frontend without using
+                        // "Exit Emulation"). Instead of silently dropping the request, stop the
+                        // running game and start the requested one once the core has shut down.
+                        Log.info("[EmulationActivity] External launch while running, stopping current game.")
+                        pendingIntentLaunch =
+                            PendingIntentLaunch(WeakReference(activity), filePaths, riivolution)
+                        NativeLibrary.getEmulationActivity()?.let { it.runOnUiThread(it::finish) }
+                        NativeLibrary.StopEmulation()
+                    }
+                    return
+                }
+            }
 
             performLaunchChecks(activity, fromIntent) { launchWithoutChecks(activity, filePaths, riivolution) }
         }
@@ -1181,7 +1208,22 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
 
         @JvmStatic
         fun stopIgnoringLaunchRequests() {
-            ignoreLaunchRequests = false
+            val pending: PendingIntentLaunch?
+            synchronized(launchLock) {
+                ignoreLaunchRequests = false
+                pending = pendingIntentLaunch
+                pendingIntentLaunch = null
+            }
+
+            // Called from the emulation thread once the previous game has fully shut down.
+            if (pending != null) {
+                Handler(Looper.getMainLooper()).post {
+                    val activity = pending.activity.get()
+                    if (activity != null && !activity.isDestroyed) {
+                        launch(activity, pending.filePaths, pending.riivolution, true)
+                    }
+                }
+            }
         }
 
         private fun areCoordinatesOutside(view: View?, x: Float, y: Float): Boolean {
