@@ -38,5 +38,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dolphin-daijisho-fix-apk
-          path: Source/Android/**/outputs/apk/**/*.apk
+          path: Source/Android/app/build/**/*.apk
           if-no-files-found: error
