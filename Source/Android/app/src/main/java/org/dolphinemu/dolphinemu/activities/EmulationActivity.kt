@@ -66,6 +66,7 @@ import org.dolphinemu.dolphinemu.utils.Log
 import org.dolphinemu.dolphinemu.utils.DirectoryInitialization
 import org.dolphinemu.dolphinemu.utils.FileBrowserHelper
 import org.dolphinemu.dolphinemu.utils.RateLimiter
+import org.dolphinemu.dolphinemu.utils.StartupHandler
 import org.dolphinemu.dolphinemu.utils.ThemeHelper
 import kotlin.math.roundToInt
 import java.lang.ref.WeakReference
@@ -1146,7 +1147,16 @@ class EmulationActivity : AppCompatActivity(), ThemeProvider {
             filePaths: Array<String>,
             riivolution: Boolean
         ) {
-            ignoreLaunchRequests = true
+            synchronized(launchLock) {
+                // A launch request may have been queued twice while waiting for directory
+                // initialization (see StartupHandler.retryPendingIntentLaunch). Only start once.
+                if (ignoreLaunchRequests) {
+                    Log.info("[EmulationActivity] Ignoring duplicate launch request.")
+                    return
+                }
+                ignoreLaunchRequests = true
+            }
+            StartupHandler.onIntentGamesLaunched()
             val launcher = Intent(activity, EmulationActivity::class.java)
             launcher.putExtra(EXTRA_SELECTED_GAMES, filePaths)
             launcher.putExtra(EXTRA_RIIVOLUTION, riivolution)

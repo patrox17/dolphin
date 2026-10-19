@@ -39,11 +39,44 @@ object StartupHandler {
     fun launchGamesFromIntent(parent: FragmentActivity): Boolean {
         val gamesToLaunch = getGamesFromIntent(parent.intent)
         if (gamesToLaunch != null && gamesToLaunch.isNotEmpty()) {
+            Log.info("[StartupHandler] Game requested by external app: ${gamesToLaunch.joinToString()}")
+            pendingIntentGames = gamesToLaunch
             // Start the emulation activity, send the ISO passed in and finish the main activity
             EmulationActivity.launch(parent, gamesToLaunch, false, true)
             return true
         }
         return false
+    }
+
+    // Game(s) requested by an external app (frontend) that have not been launched yet.
+    // On a cold start the launch waits for directory initialization, and that wait is bound to
+    // the lifecycle of the MainActivity that received the intent. If that activity gets
+    // recreated in the meantime (e.g. a configuration change), the wait is dropped and the
+    // request would be lost, so it is kept here until EmulationActivity actually starts.
+    @Volatile
+    private var pendingIntentGames: Array<String>? = null
+
+    @JvmStatic
+    fun onIntentGamesLaunched() {
+        pendingIntentGames = null
+    }
+
+    /**
+     * Re-issues an external launch request that was lost, if [parent] is still the activity that
+     * received it. Safe to call repeatedly: EmulationActivity ignores duplicate launches.
+     */
+    @JvmStatic
+    fun retryPendingIntentLaunch(parent: FragmentActivity) {
+        val pending = pendingIntentGames ?: return
+        val fromIntent = getGamesFromIntent(parent.intent)
+        if (fromIntent == null || !fromIntent.contentEquals(pending)) {
+            // This activity wasn't started for that game (e.g. opened from the launcher), so the
+            // request is stale.
+            pendingIntentGames = null
+            return
+        }
+        Log.info("[StartupHandler] Retrying external launch that was not started yet.")
+        EmulationActivity.launch(parent, pending, false, true)
     }
 
     private fun getGamesFromIntent(intent: Intent): Array<String>? {

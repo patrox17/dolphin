@@ -84,6 +84,10 @@ class MainActivity : AppCompatActivity(), MainView, OnRefreshListener, ThemeProv
             AfterDirectoryInitializationRunner().runWithLifecycle(this) {
                 ThemeHelper.setCorrectTheme(this)
             }
+        } else {
+            // This activity was recreated. If a frontend's launch request was still waiting for
+            // directory initialization, that wait died with the previous instance: queue it again.
+            StartupHandler.retryPendingIntentLaunch(this)
         }
         if (!DirectoryInitialization.isWaitingForWriteAccess(this)) {
             AfterDirectoryInitializationRunner()
@@ -111,6 +115,12 @@ class MainActivity : AppCompatActivity(), MainView, OnRefreshListener, ThemeProv
         }
 
         presenter.onResume()
+
+        // Safety net: if the directories are ready but a frontend's launch request still hasn't
+        // started, it was lost on the way; start it now.
+        if (DirectoryInitialization.areDolphinDirectoriesReady()) {
+            StartupHandler.retryPendingIntentLaunch(this)
+        }
     }
 
     override fun onStop() {
